@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>System Głosowania</title>
+  <title>System Głosowania – Loginy</title>
   <style>
     body {
       margin: 0;
@@ -14,11 +14,31 @@
       padding: 0 20px;
     }
     header {
-      padding: 20px;
+      padding: 20px 10px;
       background-color: #1f1f1f;
       border-bottom: 1px solid #333;
     }
     h1 { margin: 0 0 10px; }
+    .tabs {
+      display: flex;
+      justify-content: center;
+      background-color: #1a1a1a;
+      border-bottom: 1px solid #333;
+    }
+    .tab {
+      padding: 12px 30px;
+      cursor: pointer;
+      background-color: #1a1a1a;
+      color: #aaa;
+      font-weight: bold;
+      border: none;
+      outline: none;
+      transition: background 0.3s;
+    }
+    .tab.active {
+      background-color: #2a2a2a;
+      color: #00e676;
+    }
     .section {
       margin: 30px auto;
       max-width: 600px;
@@ -37,9 +57,6 @@
       background-color: #2c2c2c;
       color: #f0f0f0;
     }
-    textarea {
-      resize: vertical;
-    }
     button {
       background-color: #2979ff;
       color: white;
@@ -50,25 +67,7 @@
     button:hover {
       background-color: #1565c0;
     }
-    .option-input {
-      display: flex;
-      gap: 10px;
-    }
-    .option-input textarea {
-      flex: 1;
-      height: 100px;
-      font-size: 16px;
-      padding: 10px;
-    }
-    .option-input button {
-      width: 50px;
-      font-size: 24px;
-      padding: 5px;
-      font-weight: bold;
-    }
-    .hidden {
-      display: none;
-    }
+    .hidden { display: none; }
     .result-bar {
       background-color: #2979ff;
       height: 20px;
@@ -87,6 +86,12 @@
       border-radius: 6px;
       text-align: left;
     }
+    #timer {
+      font-size: 20px;
+      font-weight: bold;
+      margin-bottom: 15px;
+      color: #00e676;
+    }
   </style>
 </head>
 <body>
@@ -94,193 +99,246 @@
     <h1>System Głosowania</h1>
   </header>
 
-  <div class="section" id="admin-login">
-    <h2>Logowanie organizatora</h2>
-    <input type="password" id="admin-password" placeholder="Wprowadź hasło" />
-    <button onclick="checkAdmin()">Zaloguj</button>
-    <p id="admin-error" style="color:red;"></p>
+  <!-- Zakładki -->
+  <div class="tabs">
+    <button class="tab active" onclick="switchTab('user')">Użytkownicy</button>
+    <button class="tab" onclick="switchTab('admin')">Administracja</button>
   </div>
 
-  <div class="section hidden" id="create-vote">
-    <h2>Utwórz głosowanie</h2>
-    <input type="text" id="vote-question" placeholder="Pytanie głosowania" />
-    <div id="options-container"></div>
-    <div class="option-input">
-      <textarea id="new-option" placeholder="Dodaj opcję odpowiedzi"></textarea>
-      <button onclick="addOption()">+</button>
+  <!-- Panel użytkownika -->
+  <div id="tab-user">
+    <div class="section" id="voting-panel">
+      <div id="timer"></div>
+      <h2 id="active-question">Pytanie</h2>
+      <input type="text" id="voter-login" placeholder="Wprowadź swój login" />
+      <div id="vote-options"></div>
+      <button onclick="submitVote()">Oddaj głos</button>
+      <p id="vote-error" style="color:red;"></p>
+      <p id="vote-confirmation" style="color:lightgreen;"></p>
     </div>
-    <button onclick="startVote()">Rozpocznij głosowanie</button>
+    <div class="section hidden" id="results-panel">
+      <h2>Wyniki głosowania</h2>
+      <div id="results"></div>
+    </div>
   </div>
 
-  <div class="section hidden" id="voting-panel">
-    <h2 id="active-question">Pytanie</h2>
-    <input type="text" id="voter-name" placeholder="Imię i nazwisko" />
-    <div id="vote-options"></div>
-    <button onclick="submitVote()">Oddaj głos</button>
-    <p id="vote-error" style="color:red;"></p>
-    <p id="vote-confirmation" style="color:lightgreen;"></p>
+  <!-- Panel admina -->
+  <div id="tab-admin" class="hidden">
+    <div class="section" id="admin-login">
+      <h2>Logowanie organizatora</h2>
+      <input type="password" id="admin-password" placeholder="Wprowadź hasło" />
+      <button onclick="checkAdmin()">Zaloguj</button>
+      <p id="admin-error" style="color:red;"></p>
+    </div>
+    <div class="section hidden" id="create-vote">
+      <h2>Utwórz głosowanie</h2>
+      <input type="text" id="vote-question" placeholder="Pytanie głosowania" />
+      <textarea id="vote-options-textarea" placeholder="Wpisz opcje odpowiedzi (każda w nowej linii)"></textarea>
+      <h3>Loginy użytkowników (jeden w linii)</h3>
+      <textarea id="voter-logins" placeholder="np. Adrian273728&#10;Monika813&#10;Nowak9911"></textarea>
+      <button onclick="startVote()">Rozpocznij głosowanie</button>
+    </div>
+    <div class="section hidden" id="admin-panel">
+      <h2>Log głosów</h2>
+      <div id="votes-log"></div>
+      <button style="background-color: crimson; margin-top:20px;" onclick="resetVoting()">Usuń głosowanie</button>
+    </div>
   </div>
-
-  <div class="section hidden" id="results-panel">
-    <h2>Wyniki głosowania</h2>
-    <div id="results"></div>
-  </div>
-
-  <div class="section hidden" id="admin-panel">
-    <h2>Lista oddanych głosów</h2>
-    <div id="votes-log"></div>
-    <button style="background-color: crimson; margin-top:20px;" onclick="resetVoting()">Usuń głosowanie</button>
-  </div>
-
   <script>
-    const ADMIN_PASSWORD = 'komenda2025';
-    let voteData = {
-      question: '',
-      options: [],
-      votes: {},
-      votedUsers: [],
-      voteLog: [],
-      startTime: null
-    };
+  const ADMIN_PASSWORD = 'komenda2025';
 
-    function checkAdmin() {
-      const input = document.getElementById('admin-password').value.trim();
-      if (input === ADMIN_PASSWORD) {
-        document.getElementById('admin-login').classList.add('hidden');
-        document.getElementById('create-vote').classList.remove('hidden');
-        document.getElementById('admin-panel').classList.remove('hidden');
-        showAdminLog();
-      } else {
-        document.getElementById('admin-error').textContent = 'Niepoprawne hasło';
-      }
+  let voteData = {
+    question: '',
+    options: [],
+    allowedLogins: [],
+    votes: {},
+    votedLogins: {},
+    voteLog: [],
+    startTime: null
+  };
+
+  function switchTab(tab) {
+    document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
+    if (tab === 'user') {
+      document.getElementById('tab-user').classList.remove('hidden');
+      document.getElementById('tab-admin').classList.add('hidden');
+      document.querySelector('.tab:nth-child(1)').classList.add('active');
+    } else {
+      document.getElementById('tab-admin').classList.remove('hidden');
+      document.getElementById('tab-user').classList.add('hidden');
+      document.querySelector('.tab:nth-child(2)').classList.add('active');
     }
+  }
 
-    function addOption() {
-      const input = document.getElementById('new-option');
-      const value = input.value.trim();
-      if (value) {
-        const container = document.getElementById('options-container');
-        const el = document.createElement('p');
-        el.textContent = value;
-        container.appendChild(el);
-        voteData.options.push(value);
-        voteData.votes[value] = 0;
-        input.value = '';
-      }
-    }
-
-    function startVote() {
-      const question = document.getElementById('vote-question').value.trim();
-      if (!question || voteData.options.length < 2) {
-        alert('Wprowadź pytanie i przynajmniej 2 opcje.');
-        return;
-      }
-      voteData.question = question;
-      voteData.startTime = Date.now();
-      voteData.votedUsers = [];
-      voteData.voteLog = [];
-      localStorage.setItem('voteData', JSON.stringify(voteData));
-      document.getElementById('create-vote').classList.add('hidden');
-      showVotingPanel();
-      showResultsPanel();
+  function checkAdmin() {
+    const input = document.getElementById('admin-password').value.trim();
+    if (input === ADMIN_PASSWORD) {
+      document.getElementById('admin-login').classList.add('hidden');
+      document.getElementById('create-vote').classList.remove('hidden');
+      document.getElementById('admin-panel').classList.remove('hidden');
       showAdminLog();
+    } else {
+      document.getElementById('admin-error').textContent = 'Niepoprawne hasło';
+    }
+  }
+
+  function startVote() {
+    const question = document.getElementById('vote-question').value.trim();
+    const optionsText = document.getElementById('vote-options-textarea').value.trim();
+    const loginText = document.getElementById('voter-logins').value.trim();
+
+    if (!question || !optionsText || !loginText) {
+      alert('Uzupełnij pytanie, opcje i loginy.');
+      return;
     }
 
-    function showVotingPanel() {
-      const data = JSON.parse(localStorage.getItem('voteData'));
-      if (!data) return;
-      voteData = data;
-      document.getElementById('active-question').textContent = data.question;
-      const container = document.getElementById('vote-options');
-      container.innerHTML = '';
-      data.options.forEach(opt => {
-        const btn = document.createElement('button');
-        btn.textContent = opt;
-        btn.onclick = () => {
-          document.querySelectorAll('#vote-options button').forEach(b => b.style.background = '');
-          btn.style.background = '#1565c0';
-          btn.dataset.selected = opt;
-        };
-        container.appendChild(btn);
-      });
-      document.getElementById('voting-panel').classList.remove('hidden');
+    voteData.question = question;
+    voteData.options = optionsText.split('\n').map(x => x.trim()).filter(Boolean);
+    voteData.allowedLogins = loginText.split('\n').map(x => x.trim().toLowerCase()).filter(Boolean);
+    voteData.votes = {};
+    voteData.votedLogins = {};
+    voteData.voteLog = [];
+    voteData.startTime = Date.now();
+
+    voteData.options.forEach(opt => voteData.votes[opt] = 0);
+
+    localStorage.setItem('voteData', JSON.stringify(voteData));
+    document.getElementById('create-vote').classList.add('hidden');
+    showVotingPanel();
+    showResultsPanel();
+    showAdminLog();
+  }
+
+  function showVotingPanel() {
+    const data = JSON.parse(localStorage.getItem('voteData'));
+    if (!data) return;
+    voteData = data;
+
+    document.getElementById('active-question').textContent = voteData.question;
+    const container = document.getElementById('vote-options');
+    container.innerHTML = '';
+    voteData.options.forEach(opt => {
+      const btn = document.createElement('button');
+      btn.textContent = opt;
+      btn.onclick = () => {
+        document.querySelectorAll('#vote-options button').forEach(b => b.style.background = '');
+        btn.style.background = '#1565c0';
+        btn.dataset.selected = opt;
+      };
+      container.appendChild(btn);
+    });
+
+    document.getElementById('voting-panel').classList.remove('hidden');
+    startCountdown();
+  }
+
+  function submitVote() {
+    const login = document.getElementById('voter-login').value.trim().toLowerCase();
+    const selectedBtn = document.querySelector('#vote-options button[style*="background"]');
+    const error = document.getElementById('vote-error');
+    const confirm = document.getElementById('vote-confirmation');
+
+    error.textContent = '';
+    confirm.textContent = '';
+
+    if (!login || !selectedBtn) {
+      error.textContent = 'Wprowadź login i wybierz opcję.';
+      return;
     }
 
-    function submitVote() {
-      const name = document.getElementById('voter-name').value.trim();
-      const selectedBtn = document.querySelector('#vote-options button[style*="background"]');
-      const error = document.getElementById('vote-error');
-      const confirm = document.getElementById('vote-confirmation');
-      error.textContent = '';
-      confirm.textContent = '';
-      if (!name || !selectedBtn) {
-        error.textContent = 'Wprowadź imię i wybierz opcję.';
-        return;
-      }
-      if (voteData.votedUsers.includes(name.toLowerCase())) {
-        error.textContent = 'Już oddano głos z tym imieniem.';
-        return;
-      }
-      const option = selectedBtn.dataset.selected;
-      voteData.votes[option]++;
-      voteData.votedUsers.push(name.toLowerCase());
-      voteData.voteLog.push({ name, vote: option });
-      localStorage.setItem('voteData', JSON.stringify(voteData));
-      confirm.textContent = 'Głos zapisany. Dziękujemy!';
-      document.getElementById('voter-name').value = '';
-      document.querySelectorAll('#vote-options button').forEach(b => b.style.background = '');
-      showResultsPanel();
-      showAdminLog();
+    if (!voteData.allowedLogins.includes(login)) {
+      error.textContent = 'Nieprawidłowy login.';
+      return;
     }
 
-    function showResultsPanel() {
+    if (voteData.votedLogins[login]) {
+      error.textContent = 'Ten login już został użyty.';
+      return;
+    }
+
+    const option = selectedBtn.dataset.selected;
+    voteData.votes[option]++;
+    voteData.votedLogins[login] = true;
+    voteData.voteLog.push({ login, vote: option });
+
+    localStorage.setItem('voteData', JSON.stringify(voteData));
+
+    confirm.textContent = 'Głos zapisany. Dziękujemy!';
+    document.getElementById('voter-login').value = '';
+    document.querySelectorAll('#vote-options button').forEach(b => b.style.background = '');
+    showResultsPanel();
+    showAdminLog();
+  }
+
+  function showResultsPanel() {
+    const container = document.getElementById('results');
+    const panel = document.getElementById('results-panel');
+    container.innerHTML = '';
+
+    const now = Date.now();
+    const delay = 60 * 60 * 1000;
+    const show = (now - voteData.startTime) >= delay || document.getElementById('create-vote').classList.contains('hidden') === false;
+
+    if (!show) return;
+
+    const totalVotes = Object.values(voteData.votes).reduce((a, b) => a + b, 0) || 1;
+    for (const [option, count] of Object.entries(voteData.votes)) {
+      const percent = Math.round((count / totalVotes) * 100);
+      const label = document.createElement('div');
+      label.classList.add('result-label');
+      label.textContent = `${option}: ${count} głosów (${percent}%)`;
+      const bar = document.createElement('div');
+      bar.classList.add('result-bar');
+      bar.style.width = percent + '%';
+      container.appendChild(label);
+      container.appendChild(bar);
+    }
+    panel.classList.remove('hidden');
+  }
+
+  function showAdminLog() {
+    const container = document.getElementById('votes-log');
+    container.innerHTML = '';
+    voteData.voteLog.forEach((v, i) => {
+      const div = document.createElement('div');
+      div.classList.add('vote-log');
+      div.textContent = `${i + 1}. ${v.login} → ${v.vote}`;
+      container.appendChild(div);
+    });
+  }
+
+  function resetVoting() {
+    if (!confirm('Na pewno chcesz usunąć głosowanie?')) return;
+    localStorage.removeItem('voteData');
+    location.reload();
+  }
+
+  function startCountdown() {
+    const timerEls = document.querySelectorAll('#timer');
+    function update() {
       const now = Date.now();
-      const delay = 60 * 60 * 1000;
-      const isOrganizer = !document.getElementById('create-vote').classList.contains('hidden');
-      const timePassed = now - voteData.startTime >= delay;
-      if (isOrganizer || timePassed) {
-        const panel = document.getElementById('results-panel');
-        const container = document.getElementById('results');
-        container.innerHTML = '';
-        const totalVotes = Object.values(voteData.votes).reduce((a, b) => a + b, 0) || 1;
-        for (const [option, count] of Object.entries(voteData.votes)) {
-          const percent = Math.round((count / totalVotes) * 100);
-          const label = document.createElement('div');
-          label.classList.add('result-label');
-          label.textContent = `${option}: ${count} głosów (${percent}%)`;
-          const bar = document.createElement('div');
-          bar.classList.add('result-bar');
-          bar.style.width = percent + '%';
-          container.appendChild(label);
-          container.appendChild(bar);
-        }
-        panel.classList.remove('hidden');
+      const end = voteData.startTime + 60 * 60 * 1000;
+      const remaining = end - now;
+      if (remaining <= 0) {
+        timerEls.forEach(el => el.textContent = 'Głosowanie zakończone');
+        showResultsPanel();
+        return;
       }
+      const h = String(Math.floor(remaining / 3600000)).padStart(2, '0');
+      const m = String(Math.floor((remaining % 3600000) / 60000)).padStart(2, '0');
+      const s = String(Math.floor((remaining % 60000) / 1000)).padStart(2, '0');
+      timerEls.forEach(el => el.textContent = `Pozostały czas: ${h}:${m}:${s}`);
+      setTimeout(update, 1000);
     }
+    update();
+  }
 
-    function showAdminLog() {
-      const container = document.getElementById('votes-log');
-      container.innerHTML = '';
-      voteData.voteLog.forEach((v, i) => {
-        const div = document.createElement('div');
-        div.classList.add('vote-log');
-        div.textContent = `${i + 1}. ${v.name} → ${v.vote}`;
-        container.appendChild(div);
-      });
-    }
-
-    function resetVoting() {
-      if (!confirm('Na pewno chcesz usunąć głosowanie?')) return;
-      localStorage.removeItem('voteData');
-      location.reload();
-    }
-
-    if (localStorage.getItem('voteData')) {
-      voteData = JSON.parse(localStorage.getItem('voteData'));
-      showVotingPanel();
-      showResultsPanel();
-      if (document.getElementById('admin-panel')) showAdminLog();
-    }
-  </script>
+  if (localStorage.getItem('voteData')) {
+    voteData = JSON.parse(localStorage.getItem('voteData'));
+    showVotingPanel();
+    showResultsPanel();
+    if (document.getElementById('admin-panel')) showAdminLog();
+  }
+</script>
 </body>
 </html>

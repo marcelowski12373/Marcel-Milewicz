@@ -4,112 +4,250 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>System Głosowania</title>
+  <script type="module">
+    import { initializeApp } from "https://www.gstatic.com/firebasejs/9.22.1/firebase-app.js";
+    import {
+      getDatabase, ref, set, get, onValue, push
+    } from "https://www.gstatic.com/firebasejs/9.22.1/firebase-database.js";
+
+    const firebaseConfig = {
+      apiKey: "TWOJ_KLUCZ",
+      authDomain: "TWOJA_DOMENA.firebaseapp.com",
+      databaseURL: "https://TWOJA_BAZA.firebaseio.com",
+      projectId: "ID_PROJEKTU",
+      storageBucket: "TWOJA_BAZA.appspot.com",
+      messagingSenderId: "ID_WIADOMOSCI",
+      appId: "APP_ID"
+    };
+
+    const app = initializeApp(firebaseConfig);
+    const db = getDatabase(app);
+
+    let currentVote = null;
+    let currentUser = null;
+
+    const adminLogin = "admin";
+    const adminPass = "1234";
+
+    // Przełączanie zakładek
+    window.switchTab = (tabId, el) => {
+      document.querySelectorAll(".tab").forEach(t => t.classList.remove("active"));
+      el.classList.add("active");
+      document.querySelectorAll(".content").forEach(c => c.classList.remove("active"));
+      document.getElementById(tabId).classList.add("active");
+    };
+
+    window.adminLogin = () => {
+      const login = document.getElementById("adminLogin").value;
+      const pass = document.getElementById("adminPassword").value;
+      if (login === adminLogin && pass === adminPass) {
+        document.getElementById("loginSection").style.display = "none";
+        document.getElementById("adminPanel").style.display = "block";
+        loadLogins();
+      }
+    };
+
+    window.addLogin = () => {
+      const newLogin = document.getElementById("newLoginInput").value.trim().toLowerCase();
+      const list = document.getElementById("userList");
+      if (!newLogin) return;
+      set(ref(db, `users/${newLogin}`), true).then(() => {
+        const entry = document.createElement("div");
+        entry.textContent = newLogin;
+        list.appendChild(entry);
+        document.getElementById("adminFeedback").textContent = "Login dodany.";
+        document.getElementById("adminFeedback").className = "feedback success";
+        document.getElementById("newLoginInput").value = "";
+      });
+    };
+
+    window.createVote = () => {
+      const q = document.getElementById("questionInput").value;
+      const time = parseInt(document.getElementById("durationInput").value);
+      const options = Array.from(document.querySelectorAll("#optionList li")).map(li => li.textContent);
+      if (!q || options.length < 2 || isNaN(time)) return;
+
+      const voteData = {
+        question: q,
+        options,
+        votes: {},
+        voters: {},
+        endTime: Date.now() + time * 60000
+      };
+
+      set(ref(db, "vote"), voteData);
+      document.getElementById("adminFeedback").textContent = "Głosowanie rozpoczęte.";
+      document.getElementById("adminFeedback").className = "feedback success";
+    };
+
+    window.addOption = () => {
+      const val = document.getElementById("optionInput").value;
+      if (!val) return;
+      const li = document.createElement("li");
+      li.textContent = val;
+      document.getElementById("optionList").appendChild(li);
+      document.getElementById("optionInput").value = "";
+    };
+
+    window.deleteVoting = () => {
+      set(ref(db, "vote"), null);
+      document.getElementById("adminFeedback").textContent = "Głosowanie usunięte.";
+      document.getElementById("adminFeedback").className = "feedback warning";
+    };
+
+    window.submitVote = () => {
+      const login = document.getElementById("userLogin").value.trim().toLowerCase();
+      const msg = document.getElementById("userMessage");
+      msg.textContent = "";
+      msg.className = "feedback";
+
+      if (!login) {
+        msg.textContent = "Wprowadź login.";
+        msg.classList.add("error");
+        return;
+      }
+
+      get(ref(db, `users/${login}`)).then(userSnap => {
+        if (!userSnap.exists()) {
+          msg.textContent = "Nieprawidłowy login.";
+          msg.classList.add("error");
+          return;
+        }
+
+        if (Date.now() > currentVote.endTime) {
+          msg.textContent = "Głosowanie zakończone.";
+          msg.classList.add("warning");
+          return;
+        }
+
+        if (currentVote.voters && currentVote.voters[login]) {
+          msg.textContent = "Ten login już głosował.";
+          msg.classList.add("warning");
+          return;
+        }
+
+        const selected = document.querySelector('input[name="vote"]:checked');
+        if (!selected) {
+          msg.textContent = "Wybierz odpowiedź.";
+          msg.classList.add("error");
+          return;
+        }
+
+        const choice = selected.value;
+        currentVote.votes[choice] = (currentVote.votes[choice] || 0) + 1;
+        currentVote.voters[login] = true;
+
+        set(ref(db, "vote"), currentVote).then(() => {
+          msg.textContent = "Głos oddany.";
+          msg.classList.add("success");
+        });
+      });
+    };
+
+    const loadLogins = () => {
+      const list = document.getElementById("userList");
+      list.innerHTML = "";
+      onValue(ref(db, "users"), snap => {
+        list.innerHTML = "";
+        snap.forEach(child => {
+          const div = document.createElement("div");
+          div.textContent = child.key;
+          list.appendChild(div);
+        });
+      });
+    };
+
+    const updateCountdown = (endTime, el) => {
+      const interval = setInterval(() => {
+        const now = Date.now();
+        const remaining = endTime - now;
+        if (remaining <= 0) {
+          el.textContent = "00:00";
+          clearInterval(interval);
+          return;
+        }
+        const min = Math.floor(remaining / 60000);
+        const sec = Math.floor((remaining % 60000) / 1000);
+        el.textContent = `${min.toString().padStart(2, '0')}:${sec.toString().padStart(2, '0')}`;
+      }, 1000);
+    };
+
+    const showResults = (data) => {
+      const resultsList = document.getElementById("resultsList");
+      if (!data || !data.votes || Date.now() < data.endTime) {
+        resultsList.innerHTML = "Brak wyników do wyświetlenia.";
+        return;
+      }
+      let output = `<p><strong>${data.question}</strong></p><ul>`;
+      data.options.forEach(opt => {
+        const count = data.votes[opt] || 0;
+        output += `<li>${opt}: ${count} głosów</li>`;
+      });
+      output += `</ul>`;
+      resultsList.innerHTML = output;
+    };
+
+    document.addEventListener("DOMContentLoaded", () => {
+      onValue(ref(db, "vote"), snap => {
+        const data = snap.val();
+        const area = document.getElementById("votingArea");
+        const q = document.getElementById("votingQuestion");
+        const opts = document.getElementById("votingOptions");
+        const msg = document.getElementById("userMessage");
+        const info = document.getElementById("activeVoteInfo");
+
+        if (!data) {
+          area.style.display = "none";
+          info.innerHTML = "Brak aktywnego głosowania.";
+          showResults(null);
+          return;
+        }
+
+        currentVote = data;
+        if (Date.now() < data.endTime) {
+          q.textContent = data.question;
+          opts.innerHTML = "";
+          data.options.forEach(opt => {
+            const label = document.createElement("label");
+            label.innerHTML = `<input type="radio" name="vote" value="${opt}" /> ${opt}`;
+            opts.appendChild(label);
+          });
+          area.style.display = "block";
+          updateCountdown(data.endTime, document.getElementById("userTimer"));
+        } else {
+          area.style.display = "none";
+        }
+
+        info.innerHTML = `
+          <p><strong>Aktywne głosowanie:</strong> ${data.question}</p>
+          <p><strong>Głosów oddanych:</strong> ${Object.keys(data.voters || {}).length}</p>
+          <div class="countdown" id="adminTimer"></div>
+        `;
+        updateCountdown(data.endTime, document.getElementById("adminTimer"));
+        showResults(data);
+      });
+    });
+  </script>
   <style>
-    body {
-      background-color: #121212;
-      color: white;
-      font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
-      margin: 0;
-      padding: 0;
-    }
-
-    header {
-      background-color: #1f1f1f;
-      padding: 20px;
-      text-align: center;
-      font-size: 24px;
-      font-weight: bold;
-    }
-
-    .tabs {
-      display: flex;
-      justify-content: center;
-      background-color: #1f1f1f;
-    }
-
-    .tab {
-      padding: 15px 20px;
-      cursor: pointer;
-      background: #333;
-      color: white;
-      margin: 0 5px;
-      border-radius: 5px 5px 0 0;
-    }
-
-    .tab.active {
-      background: #007bff;
-    }
-
-    .content {
-      display: none;
-      padding: 20px;
-    }
-
-    .content.active {
-      display: block;
-    }
-
-    .box {
-      max-width: 500px;
-      margin: 0 auto;
-    }
-
-    input, button, select {
-      width: 100%;
-      padding: 10px;
-      margin: 8px 0;
-      border: none;
-      border-radius: 5px;
-      font-size: 16px;
-    }
-
-    button {
-      background-color: #007bff;
-      color: white;
-      cursor: pointer;
-    }
-
-    button:hover {
-      background-color: #0056b3;
-    }
-
-    .feedback {
-      margin-top: 10px;
-      font-weight: bold;
-    }
-
-    .feedback.success {
-      color: #00e676;
-    }
-
-    .feedback.error {
-      color: #ff5252;
-    }
-
-    .feedback.warning {
-      color: #ffc107;
-    }
-
-    .countdown {
-      font-size: 18px;
-      margin: 10px 0;
-      color: #00e5ff;
-    }
-
-    #userList {
-      font-size: 14px;
-      margin-top: 10px;
-    }
-
-    #resultsList {
-      font-size: 16px;
-      margin-top: 20px;
-    }
+    body { font-family: sans-serif; background: #121212; color: #fff; margin: 0; padding: 0; }
+    header { background: #1f1f1f; text-align: center; padding: 1rem; font-size: 1.5rem; }
+    .tabs { display: flex; background: #1f1f1f; justify-content: center; }
+    .tab { padding: 1rem; cursor: pointer; background: #333; margin: 0 5px; border-radius: 5px 5px 0 0; }
+    .tab.active { background: #007bff; }
+    .content { display: none; padding: 1rem; }
+    .content.active { display: block; }
+    input, button { padding: 10px; margin: 5px 0; width: 100%; border-radius: 5px; border: none; }
+    button { background: #007bff; color: white; font-weight: bold; }
+    .feedback { margin-top: 10px; }
+    .success { color: #00e676; }
+    .error { color: #ff5252; }
+    .warning { color: #ffc107; }
+    .box { max-width: 500px; margin: auto; }
+    ul { padding-left: 20px; }
   </style>
 </head>
 <body>
   <header>System Głosowania</header>
-
   <div class="tabs">
     <div class="tab active" onclick="switchTab('userTab', this)">Użytkownicy</div>
     <div class="tab" onclick="switchTab('adminTab', this)">Administracja</div>
@@ -120,12 +258,12 @@
     <div class="box">
       <h3>Oddaj głos</h3>
       <input type="text" id="userLogin" placeholder="Twój login" />
-      <div id="votingArea" style="display: none;">
+      <div id="votingArea" style="display:none;">
         <div id="votingQuestion"></div>
         <div id="votingOptions"></div>
         <div class="countdown" id="userTimer"></div>
         <button onclick="submitVote()">Oddaj głos</button>
-        <p id="userMessage" class="feedback"></p>
+        <div id="userMessage" class="feedback"></div>
       </div>
     </div>
   </div>
@@ -138,26 +276,19 @@
         <input type="password" id="adminPassword" placeholder="Hasło" />
         <button onclick="adminLogin()">Zaloguj</button>
       </div>
-
       <div id="adminPanel" style="display:none;">
         <div id="activeVoteInfo"></div>
-
-        <h4>Utwórz głosowanie</h4>
         <input type="text" id="questionInput" placeholder="Pytanie" />
-        <input type="text" id="optionInput" placeholder="Dodaj opcję" />
+        <input type="text" id="optionInput" placeholder="Opcja" />
         <button onclick="addOption()">Dodaj opcję</button>
         <ul id="optionList"></ul>
-        <input type="number" id="durationInput" placeholder="Czas trwania (minuty)" value="60" min="1" />
+        <input type="number" id="durationInput" value="60" />
         <button id="startVoteBtn" onclick="createVote()">Rozpocznij głosowanie</button>
-        <p id="adminFeedback" class="feedback"></p>
-
-        <h4>Dodaj login użytkownika</h4>
         <input type="text" id="newLoginInput" placeholder="Nowy login" />
         <button onclick="addLogin()">Dodaj login</button>
         <div id="userList"></div>
-
-        <h4>Inne</h4>
         <button onclick="deleteVoting()">Usuń głosowanie</button>
+        <div id="adminFeedback" class="feedback"></div>
       </div>
     </div>
   </div>
@@ -168,242 +299,5 @@
       <div id="resultsList">Brak wyników do wyświetlenia.</div>
     </div>
   </div>
-
-  <script type="module">
-  import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-app.js";
-import { getDatabase, ref, set, get, onValue, remove } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-database.js";
-
-// Konfiguracja Firebase
-const firebaseConfig = {
-  apiKey: "AIzaSyBMX4gMbmRYMYbXheJvMtP6PtcHdc0AOYc",
-  authDomain: "glosowanie-marcel.firebaseapp.com",
-  databaseURL: "https://glosowanie-marcel-default-rtdb.europe-west1.firebasedatabase.app",
-  projectId: "glosowanie-marcel",
-  storageBucket: "glosowanie-marcel.appspot.com",
-  messagingSenderId: "890689183476",
-  appId: "1:890689183476:web:b1b2df2897ae0fbc6c64c7"
-};
-
-const app = initializeApp(firebaseConfig);
-const db = getDatabase(app);
-let currentVote = {};
-let options = [];
-
-window.switchTab = function (tabId, el) {
-  document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
-  document.querySelectorAll('.content').forEach(c => c.classList.remove('active'));
-  el.classList.add('active');
-  document.getElementById(tabId).classList.add('active');
-};
-
-window.adminLogin = function () {
-  const login = document.getElementById("adminLogin").value;
-  const pass = document.getElementById("adminPassword").value;
-  if (login === "admin" && pass === "1234") {
-    document.getElementById("loginSection").style.display = "none";
-    document.getElementById("adminPanel").style.display = "block";
-    listenToUsers();
-  } else {
-    alert("Niepoprawne dane logowania.");
-  }
-};
-
-window.addOption = function () {
-  const val = document.getElementById("optionInput").value.trim();
-  if (!val) return;
-  options.push(val);
-  const li = document.createElement("li");
-  li.textContent = val;
-  document.getElementById("optionList").appendChild(li);
-  document.getElementById("optionInput").value = "";
-};
-
-window.createVote = function () {
-  const question = document.getElementById("questionInput").value.trim();
-  const duration = parseInt(document.getElementById("durationInput").value);
-  if (!question || options.length < 2 || isNaN(duration)) {
-    setFeedback("adminFeedback", "Uzupełnij wszystkie pola", "error");
-    return;
-  }
-
-  const endTime = Date.now() + duration * 60000;
-
-  const voteData = {
-    question,
-    options,
-    votes: {},
-    voters: {},
-    endTime
-  };
-
-  set(ref(db, "vote"), voteData).then(() => {
-    setFeedback("adminFeedback", "Głosowanie rozpoczęte", "success");
-    options = [];
-    document.getElementById("optionList").innerHTML = "";
-  });
-};
-
-window.addLogin = function () {
-  const login = document.getElementById("newLoginInput").value.trim().toLowerCase();
-  if (!login) return;
-  set(ref(db, `users/${login}`), true).then(() => {
-    document.getElementById("newLoginInput").value = "";
-    setFeedback("adminFeedback", "Login dodany", "success");
-  });
-};
-
-function listenToUsers() {
-  onValue(ref(db, "users"), snapshot => {
-    const list = document.getElementById("userList");
-    list.innerHTML = "<strong>Lista loginów:</strong><br>";
-    if (snapshot.exists()) {
-      Object.keys(snapshot.val()).forEach(login => {
-        list.innerHTML += `<div>${login}</div>`;
-      });
-    } else {
-      list.innerHTML += "Brak loginów.";
-    }
-  });
-}
-
-window.deleteVoting = function () {
-  remove(ref(db, "vote")).then(() => {
-    setFeedback("adminFeedback", "Głosowanie usunięte", "warning");
-  });
-};
-
-function setFeedback(id, message, type) {
-  const el = document.getElementById(id);
-  el.textContent = message;
-  el.className = "feedback " + type;
-}
-
-function updateCountdown(endTime, element) {
-  function tick() {
-    const now = Date.now();
-    const diff = endTime - now;
-    if (diff <= 0) {
-      element.textContent = "Głosowanie zakończone";
-      return;
-    }
-    const h = Math.floor(diff / 3600000);
-    const m = Math.floor((diff % 3600000) / 60000);
-    const s = Math.floor((diff % 60000) / 1000);
-    element.textContent = `Pozostały czas: ${h.toString().padStart(2, '0')}:${m.toString().padStart(2, '0')}:${s.toString().padStart(2, '0')}`;
-    setTimeout(tick, 1000);
-  }
-  tick();
-}
-window.submitVote = function () {
-  const login = document.getElementById("userLogin").value.trim().toLowerCase();
-  const msg = document.getElementById("userMessage");
-  msg.textContent = "";
-  msg.className = "feedback";
-
-  if (!login) {
-    msg.textContent = "Wprowadź login.";
-    msg.classList.add("error");
-    return;
-  }
-
-  get(ref(db, `users/${login}`)).then(userSnap => {
-    if (!userSnap.exists()) {
-      msg.textContent = "Nieprawidłowy login.";
-      msg.classList.add("error");
-      return;
-    }
-
-    if (Date.now() > currentVote.endTime) {
-      msg.textContent = "Głosowanie zakończone.";
-      msg.classList.add("warning");
-      return;
-    }
-
-    if (currentVote.voters && currentVote.voters[login]) {
-      msg.textContent = "Ten login już głosował.";
-      msg.classList.add("warning");
-      return;
-    }
-
-    const selected = document.querySelector('input[name="vote"]:checked');
-    if (!selected) {
-      msg.textContent = "Wybierz odpowiedź.";
-      msg.classList.add("error");
-      return;
-    }
-
-    const choice = selected.value;
-    currentVote.votes[choice] = (currentVote.votes[choice] || 0) + 1;
-    currentVote.voters[login] = true;
-
-    set(ref(db, "vote"), currentVote).then(() => {
-      msg.textContent = "Głos oddany.";
-      msg.classList.add("success");
-    });
-  });
-}
-
-function showResults(data) {
-  const resultsList = document.getElementById("resultsList");
-  if (!data || !data.votes || Date.now() < data.endTime) {
-    resultsList.innerHTML = "Brak wyników do wyświetlenia.";
-    return;
-  }
-
-  let output = `<p><strong>${data.question}</strong></p><ul>`;
-  data.options.forEach(opt => {
-    const count = data.votes[opt] || 0;
-    output += `<li>${opt}: ${count} głosów</li>`;
-  });
-  output += `</ul>`;
-  resultsList.innerHTML = output;
-}
-
-document.addEventListener("DOMContentLoaded", () => {
-  onValue(ref(db, "vote"), snapshot => {
-    const data = snapshot.val();
-    const votingArea = document.getElementById("votingArea");
-    const adminInfo = document.getElementById("activeVoteInfo");
-    const startBtn = document.getElementById("startVoteBtn");
-
-    if (!data) {
-      votingArea.style.display = "none";
-      adminInfo.innerHTML = "<p>Brak aktywnego głosowania.</p>";
-      document.getElementById("resultsList").innerHTML = "Brak wyników do wyświetlenia.";
-      startBtn.disabled = false;
-      return;
-    }
-
-    currentVote = data;
-    const now = Date.now();
-    const ended = now >= data.endTime;
-
-    if (!ended) {
-      document.getElementById("votingQuestion").textContent = data.question;
-      const optionsDiv = document.getElementById("votingOptions");
-      optionsDiv.innerHTML = "";
-      data.options.forEach(opt => {
-        const label = document.createElement("label");
-        label.innerHTML = `<input type="radio" name="vote" value="${opt}" /> ${opt}`;
-        optionsDiv.appendChild(label);
-      });
-      votingArea.style.display = "block";
-      updateCountdown(data.endTime, document.getElementById("userTimer"));
-    } else {
-      votingArea.style.display = "none";
-    }
-
-    adminInfo.innerHTML = `
-      <p><strong>Aktywne głosowanie:</strong> ${data.question}</p>
-      <p><strong>Głosów oddanych:</strong> ${Object.keys(data.voters || {}).length}</p>
-      <div class="countdown" id="adminTimer"></div>
-    `;
-    updateCountdown(data.endTime, document.getElementById("adminTimer"));
-
-    startBtn.disabled = !ended;
-    showResults(data);
-  });
-});
-</script>
 </body>
 </html>

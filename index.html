@@ -79,6 +79,17 @@
       margin-top: 10px;
       font-size: 14px;
     }
+
+    .feedback {
+      margin-top: 10px;
+      font-weight: bold;
+    }
+
+    .countdown {
+      font-size: 18px;
+      color: #00e676;
+      margin: 10px 0;
+    }
   </style>
 </head>
 <body>
@@ -96,8 +107,9 @@
       <div id="votingArea" style="display: none;">
         <div id="votingQuestion"></div>
         <div id="votingOptions"></div>
+        <div class="countdown" id="userTimer"></div>
         <button onclick="submitVote()">Oddaj głos</button>
-        <p id="userMessage"></p>
+        <p id="userMessage" class="feedback"></p>
       </div>
     </div>
   </div>
@@ -110,12 +122,14 @@
       <button onclick="adminLogin()">Zaloguj</button>
 
       <div id="adminPanel" style="display:none;">
+        <div id="activeVoteInfo" style="margin-bottom: 20px;"></div>
+
         <h4>Utwórz głosowanie</h4>
         <input type="text" id="questionInput" placeholder="Pytanie" />
         <input type="text" id="optionInput" placeholder="Dodaj opcję" />
         <button onclick="addOption()">Dodaj opcję</button>
         <ul id="optionList"></ul>
-        <button onclick="createVote()">Rozpocznij głosowanie</button>
+        <button id="startVoteBtn" onclick="createVote()">Rozpocznij głosowanie</button>
 
         <h4>Dodaj login użytkownika</h4>
         <input type="text" id="newLoginInput" placeholder="Nowy login" />
@@ -145,7 +159,7 @@
     const app = initializeApp(firebaseConfig);
     const db = getDatabase(app);
 
-    const options = [];
+    let options = [];
     let currentVote = {};
 
     window.switchTab = function(tabId, el) {
@@ -179,12 +193,17 @@
     window.createVote = function() {
       const question = document.getElementById("questionInput").value.trim();
       if (!question || options.length < 2) return alert("Wprowadź pytanie i co najmniej 2 opcje.");
+
+      const endTime = Date.now() + 60 * 60 * 1000; // 1 godzina
+
       const voteData = {
         question,
         options,
         votes: {},
-        voters: {}
+        voters: {},
+        endTime
       };
+
       set(ref(db, "vote"), voteData).then(() => {
         alert("Głosowanie utworzone.");
       });
@@ -192,20 +211,35 @@
 
     window.submitVote = function() {
       const login = document.getElementById("userLogin").value.trim().toLowerCase();
+      const msg = document.getElementById("userMessage");
+      msg.textContent = "";
+
       if (!login) return alert("Wprowadź login.");
       get(ref(db, `users/${login}`)).then(userSnap => {
-        if (!userSnap.exists()) return alert("Nieprawidłowy login.");
-        if (currentVote.voters && currentVote.voters[login]) {
-          document.getElementById("userMessage").textContent = "Już oddałeś głos.";
+        if (!userSnap.exists()) {
+          msg.textContent = "Nieprawidłowy login.";
           return;
         }
+
+        const now = Date.now();
+        if (now > currentVote.endTime) {
+          msg.textContent = "Głosowanie zakończone.";
+          return;
+        }
+
+        if (currentVote.voters && currentVote.voters[login]) {
+          msg.textContent = "Ten login już oddał głos.";
+          return;
+        }
+
         const selected = document.querySelector('input[name="vote"]:checked');
         if (!selected) return alert("Wybierz odpowiedź.");
         const choice = selected.value;
         currentVote.votes[choice] = (currentVote.votes[choice] || 0) + 1;
         currentVote.voters[login] = true;
+
         set(ref(db, "vote"), currentVote).then(() => {
-          document.getElementById("userMessage").textContent = "Głos oddany.";
+          msg.textContent = "Głos oddany.";
         });
       });
     }
@@ -236,14 +270,46 @@
     window.deleteVoting = function() {
       remove(ref(db, "vote")).then(() => {
         alert("Głosowanie usunięte.");
+        document.getElementById("votingArea").style.display = "none";
+        document.getElementById("activeVoteInfo").innerHTML = "";
+        document.getElementById("startVoteBtn").disabled = false;
       });
+    }
+
+    function updateCountdown(endTime, el) {
+      function tick() {
+        const now = Date.now();
+        const diff = endTime - now;
+        if (diff <= 0) {
+          el.textContent = "Głosowanie zakończone";
+          return;
+        }
+        const h = Math.floor(diff / 3600000);
+        const m = Math.floor((diff % 3600000) / 60000);
+        const s = Math.floor((diff % 60000) / 1000);
+        el.textContent = `Pozostały czas: ${String(h).padStart(2, '0')}:${String(m).padStart(2, '0')}:${String(s).padStart(2, '0')}`;
+        setTimeout(tick, 1000);
+      }
+      tick();
     }
 
     document.addEventListener("DOMContentLoaded", () => {
       onValue(ref(db, "vote"), snapshot => {
         const data = snapshot.val();
-        if (!data) return;
+        const userSection = document.getElementById("votingArea");
+        const adminInfo = document.getElementById("activeVoteInfo");
+        const startBtn = document.getElementById("startVoteBtn");
+
+        if (!data) {
+          userSection.style.display = "none";
+          adminInfo.innerHTML = "<p>Brak aktywnego głosowania.</p>";
+          startBtn.disabled = false;
+          return;
+        }
+
         currentVote = data;
+        userSection.style.display = "block";
+
         document.getElementById("votingQuestion").textContent = data.question;
         const container = document.getElementById("votingOptions");
         container.innerHTML = "";
@@ -252,7 +318,19 @@
           label.innerHTML = `<input type="radio" name="vote" value="${opt}" /> ${opt}`;
           container.appendChild(label);
         });
-        document.getElementById("votingArea").style.display = "block";
+
+        updateCountdown(data.endTime, document.getElementById("userTimer"));
+        updateCountdown(data.endTime, adminInfo);
+
+        adminInfo.innerHTML = `
+          <p><strong>Aktywne głosowanie:</strong> ${data.question}</p>
+          <p><strong>Głosów:</strong> ${Object.keys(data.voters || {}).length}</p>
+          <div class="countdown" id="adminTimer"></div>
+        `;
+        updateCountdown(data.endTime, document.getElementById("adminTimer"));
+
+        const now = Date.now();
+        startBtn.disabled = now < data.endTime;
       });
     });
   </script>

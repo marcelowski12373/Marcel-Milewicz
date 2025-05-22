@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>System głosowania</title>
+  <title>System Głosowania</title>
   <style>
     body {
       margin: 0;
@@ -13,27 +13,21 @@
       text-align: center;
       padding: 0 20px;
     }
-
     header {
       padding: 20px;
       background-color: #1f1f1f;
       border-bottom: 1px solid #333;
     }
-
-    h1 {
-      margin: 0 0 10px;
-    }
-
+    h1 { margin: 0 0 10px; }
     .section {
       margin: 30px auto;
-      max-width: 500px;
+      max-width: 600px;
       background: #1e1e1e;
       padding: 20px;
       border-radius: 12px;
       box-shadow: 0 0 10px rgba(0,0,0,0.5);
     }
-
-    input, button, textarea, select {
+    input, button, textarea {
       width: 100%;
       margin: 10px 0;
       padding: 10px;
@@ -43,7 +37,10 @@
       background-color: #2c2c2c;
       color: #f0f0f0;
     }
-
+    textarea {
+      height: 60px;
+      resize: vertical;
+    }
     button {
       background-color: #2979ff;
       color: white;
@@ -51,24 +48,19 @@
       cursor: pointer;
       transition: 0.3s;
     }
-
     button:hover {
       background-color: #1565c0;
     }
-
     .option-input {
       display: flex;
       gap: 10px;
     }
-
-    .option-input input {
+    .option-input textarea {
       flex: 1;
     }
-
     .hidden {
       display: none;
     }
-
     .result-bar {
       background-color: #2979ff;
       height: 20px;
@@ -76,10 +68,22 @@
       margin: 5px 0;
       transition: width 0.4s ease;
     }
-
     .result-label {
       text-align: left;
       margin-top: 10px;
+    }
+    .vote-log {
+      background-color: #2a2a2a;
+      padding: 10px;
+      margin: 5px 0;
+      border-radius: 6px;
+      text-align: left;
+    }
+    .small-title {
+      font-size: 18px;
+      margin-top: 20px;
+      border-top: 1px solid #444;
+      padding-top: 10px;
     }
   </style>
 </head>
@@ -96,13 +100,13 @@
     <p id="admin-error" style="color:red;"></p>
   </div>
 
-  <!-- TWORZENIE GŁOSOWANIA (tylko po zalogowaniu) -->
+  <!-- TWORZENIE GŁOSOWANIA -->
   <div class="section hidden" id="create-vote">
-    <h2>Utwórz nowe głosowanie</h2>
+    <h2>Utwórz głosowanie</h2>
     <input type="text" id="vote-question" placeholder="Pytanie głosowania" />
     <div id="options-container"></div>
     <div class="option-input">
-      <input type="text" id="new-option" placeholder="Dodaj opcję" />
+      <textarea id="new-option" placeholder="Dodaj opcję odpowiedzi"></textarea>
       <button onclick="addOption()">+</button>
     </div>
     <button onclick="startVote()">Rozpocznij głosowanie</button>
@@ -120,16 +124,24 @@
 
   <!-- WYNIKI -->
   <div class="section hidden" id="results-panel">
-    <h2>Wyniki</h2>
+    <h2>Wyniki głosowania</h2>
     <div id="results"></div>
   </div>
-  <script>
+
+  <!-- PANEL ADMINA - LOG GŁOSÓW I RESET -->
+  <div class="section hidden" id="admin-panel">
+    <h2>Lista oddanych głosów</h2>
+    <div id="votes-log"></div>
+    <button style="background-color: crimson; margin-top:20px;" onclick="resetVoting()">Usuń głosowanie</button>
+  </div>
+    <script>
     const ADMIN_PASSWORD = 'komenda2025';
     let voteData = {
       question: '',
       options: [],
-      votes: {}, // { opcja: liczba }
-      votedUsers: [], // [nazwy]
+      votes: {},
+      votedUsers: [],
+      voteLog: [],
       startTime: null
     };
 
@@ -138,7 +150,8 @@
       if (input === ADMIN_PASSWORD) {
         document.getElementById('admin-login').classList.add('hidden');
         document.getElementById('create-vote').classList.remove('hidden');
-        document.getElementById('admin-error').textContent = '';
+        document.getElementById('admin-panel').classList.remove('hidden');
+        showAdminLog();
       } else {
         document.getElementById('admin-error').textContent = 'Niepoprawne hasło';
       }
@@ -164,28 +177,24 @@
         alert('Wprowadź pytanie i przynajmniej 2 opcje.');
         return;
       }
-
       voteData.question = question;
       voteData.startTime = Date.now();
       voteData.votedUsers = [];
-
+      voteData.voteLog = [];
       localStorage.setItem('voteData', JSON.stringify(voteData));
-
       document.getElementById('create-vote').classList.add('hidden');
       showVotingPanel();
       showResultsPanel();
+      showAdminLog();
     }
 
     function showVotingPanel() {
       const data = JSON.parse(localStorage.getItem('voteData'));
       if (!data) return;
-
       voteData = data;
-
       document.getElementById('active-question').textContent = data.question;
       const container = document.getElementById('vote-options');
       container.innerHTML = '';
-
       data.options.forEach(opt => {
         const btn = document.createElement('button');
         btn.textContent = opt;
@@ -196,7 +205,6 @@
         };
         container.appendChild(btn);
       });
-
       document.getElementById('voting-panel').classList.remove('hidden');
     }
 
@@ -207,66 +215,74 @@
       const confirm = document.getElementById('vote-confirmation');
       error.textContent = '';
       confirm.textContent = '';
-
       if (!name || !selectedBtn) {
         error.textContent = 'Wprowadź imię i wybierz opcję.';
         return;
       }
-
       if (voteData.votedUsers.includes(name.toLowerCase())) {
         error.textContent = 'Już oddano głos z tym imieniem.';
         return;
       }
-
       const option = selectedBtn.dataset.selected;
       voteData.votes[option]++;
       voteData.votedUsers.push(name.toLowerCase());
-
+      voteData.voteLog.push({ name, vote: option });
       localStorage.setItem('voteData', JSON.stringify(voteData));
-
-      confirm.textContent = 'Głos został zapisany. Dziękujemy!';
+      confirm.textContent = 'Głos zapisany. Dziękujemy!';
       document.getElementById('voter-name').value = '';
       document.querySelectorAll('#vote-options button').forEach(b => b.style.background = '');
       showResultsPanel();
+      showAdminLog();
     }
 
     function showResultsPanel() {
       const now = Date.now();
-      const delay = 60 * 60 * 1000; // 60 minut
-
+      const delay = 60 * 60 * 1000;
       const isOrganizer = !document.getElementById('create-vote').classList.contains('hidden');
       const timePassed = now - voteData.startTime >= delay;
-
       if (isOrganizer || timePassed) {
         const panel = document.getElementById('results-panel');
         const container = document.getElementById('results');
         container.innerHTML = '';
-
         const totalVotes = Object.values(voteData.votes).reduce((a, b) => a + b, 0) || 1;
-
         for (const [option, count] of Object.entries(voteData.votes)) {
           const percent = Math.round((count / totalVotes) * 100);
           const label = document.createElement('div');
           label.classList.add('result-label');
           label.textContent = `${option}: ${count} głosów (${percent}%)`;
-
           const bar = document.createElement('div');
           bar.classList.add('result-bar');
           bar.style.width = percent + '%';
-
           container.appendChild(label);
           container.appendChild(bar);
         }
-
         panel.classList.remove('hidden');
       }
     }
 
-    // Automatyczne załadowanie głosowania przy otwarciu strony
+    function showAdminLog() {
+      const container = document.getElementById('votes-log');
+      container.innerHTML = '';
+      voteData.voteLog.forEach((v, i) => {
+        const div = document.createElement('div');
+        div.classList.add('vote-log');
+        div.textContent = `${i + 1}. ${v.name} → ${v.vote}`;
+        container.appendChild(div);
+      });
+    }
+
+    function resetVoting() {
+      if (!confirm('Na pewno chcesz usunąć głosowanie?')) return;
+      localStorage.removeItem('voteData');
+      location.reload();
+    }
+
+    // Auto start jeśli dane istnieją
     if (localStorage.getItem('voteData')) {
       voteData = JSON.parse(localStorage.getItem('voteData'));
       showVotingPanel();
       showResultsPanel();
+      if (document.getElementById('admin-panel')) showAdminLog();
     }
   </script>
 </body>

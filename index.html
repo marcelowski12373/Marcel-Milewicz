@@ -3,38 +3,50 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Prognoza Pogody – Lubin, Bolesławiec i Twoja Lokalizacja</title>
+  <title>Pogoda – Lubin, Bolesławiec i Twoja lokalizacja</title>
   <style>
     :root {
-      --bg-dark: #121212;
-      --bg-card: #1e1e1e;
-      --text-main: #f0f0f0;
-      --primary: #2979ff;
-      --border: #333;
+      --text-color: #f0f0f0;
     }
 
     body {
       margin: 0;
       font-family: 'Segoe UI', sans-serif;
-      background-color: var(--bg-dark);
-      color: var(--text-main);
+      color: var(--text-color);
       text-align: center;
-      transition: background 0.5s;
+      overflow-x: hidden;
+      position: relative;
+    }
+
+    body.clear {
+      background: linear-gradient(to bottom, #1c1c1c, #3a3a3a);
+    }
+
+    body.clouds {
+      background: linear-gradient(to bottom, #2c2c2c, #4b4b4b);
+    }
+
+    body.rain {
+      background: #1e1e2e;
+    }
+
+    body.night {
+      background: #0c0c1a;
     }
 
     header {
-      background-color: #1f1f1f;
       padding: 20px;
-      border-bottom: 1px solid var(--border);
+      background-color: rgba(0, 0, 0, 0.6);
+      position: relative;
+      z-index: 2;
     }
 
     h1 {
       margin: 0 0 10px;
-      font-weight: 600;
     }
 
     .refresh-btn {
-      background-color: var(--primary);
+      background-color: #2979ff;
       color: white;
       border: none;
       padding: 10px 20px;
@@ -54,14 +66,15 @@
       justify-content: center;
       gap: 25px;
       padding: 30px 15px;
+      position: relative;
+      z-index: 2;
     }
 
     .city-weather {
-      background-color: var(--bg-card);
-      border: 1px solid var(--border);
+      background-color: rgba(30, 30, 30, 0.8);
       border-radius: 15px;
       padding: 20px;
-      width: 330px;
+      width: 320px;
       box-shadow: 0 0 10px rgba(0,0,0,0.3);
       transition: transform 0.2s;
     }
@@ -81,27 +94,70 @@
     }
 
     .forecast-day {
-      border-top: 1px solid var(--border);
+      border-top: 1px solid #444;
       padding: 10px 0;
     }
-
-    .background-clear { background: linear-gradient(to bottom, #1c1c1c, #3a3a3a); }
-    .background-clouds { background: linear-gradient(to bottom, #2c2c2c, #555555); }
-    .background-rain { background: linear-gradient(to bottom, #1e1e2e, #3a4a5a); }
-    .background-night { background: linear-gradient(to bottom, #0c0c1a, #1a1a2e); }
 
     @media (max-width: 768px) {
       .city-weather {
         width: 90%;
       }
+
       .weather-container {
         flex-direction: column;
         align-items: center;
       }
     }
+
+    /* ANIMOWANE TŁA */
+    .rain-drop {
+      position: fixed;
+      width: 2px;
+      height: 20px;
+      background: #00f;
+      top: -20px;
+      animation: fall 1s linear infinite;
+      z-index: 1;
+    }
+
+    @keyframes fall {
+      to {
+        transform: translateY(110vh);
+      }
+    }
+
+    .cloud {
+      position: fixed;
+      background: #ccc;
+      border-radius: 50%;
+      opacity: 0.5;
+      animation: moveClouds 60s linear infinite;
+      z-index: 1;
+    }
+
+    @keyframes moveClouds {
+      from { transform: translateX(-200px); }
+      to { transform: translateX(110vw); }
+    }
+
+    .star {
+      position: fixed;
+      width: 2px;
+      height: 2px;
+      background: #fff;
+      border-radius: 50%;
+      opacity: 0.8;
+      animation: twinkle 2s infinite ease-in-out;
+      z-index: 1;
+    }
+
+    @keyframes twinkle {
+      0%, 100% { opacity: 0.2; }
+      50% { opacity: 1; }
+    }
   </style>
 </head>
-<body class="background-clear">
+<body class="clear">
   <header>
     <h1>Prognoza Pogody</h1>
     <button class="refresh-btn" onclick="loadWeather()">Odśwież pogodę</button>
@@ -121,16 +177,58 @@
       { name: 'Bolesławiec', lat: 51.2667, lon: 15.5667, elementId: 'boleslawiec' }
     ];
 
-    function setBackground(condition, isNight) {
+    function setWeatherBackground(condition, isNight) {
       const body = document.body;
       body.className = '';
-      if (isNight) body.classList.add('background-night');
-      else if (condition.includes('rain')) body.classList.add('background-rain');
-      else if (condition.includes('cloud')) body.classList.add('background-clouds');
-      else body.classList.add('background-clear');
+
+      if (isNight) {
+        body.classList.add('night');
+        addStars();
+      } else if (condition.includes('rain')) {
+        body.classList.add('rain');
+        addRain();
+      } else if (condition.includes('cloud')) {
+        body.classList.add('clouds');
+        addClouds();
+      } else {
+        body.classList.add('clear');
+      }
     }
 
-    function fetchWeather(city) {
+    function addRain() {
+      for (let i = 0; i < 50; i++) {
+        const drop = document.createElement('div');
+        drop.classList.add('rain-drop');
+        drop.style.left = Math.random() * window.innerWidth + 'px';
+        drop.style.animationDuration = (0.5 + Math.random()) + 's';
+        document.body.appendChild(drop);
+      }
+    }
+
+    function addClouds() {
+      for (let i = 0; i < 10; i++) {
+        const cloud = document.createElement('div');
+        cloud.classList.add('cloud');
+        const size = 60 + Math.random() * 100;
+        cloud.style.width = size + 'px';
+        cloud.style.height = size * 0.6 + 'px';
+        cloud.style.top = Math.random() * 40 + '%';
+        cloud.style.left = -200 + 'px';
+        document.body.appendChild(cloud);
+      }
+    }
+
+    function addStars() {
+      for (let i = 0; i < 100; i++) {
+        const star = document.createElement('div');
+        star.classList.add('star');
+        star.style.top = Math.random() * 100 + '%';
+        star.style.left = Math.random() * 100 + '%';
+        star.style.animationDuration = (1 + Math.random() * 2) + 's';
+        document.body.appendChild(star);
+      }
+    }
+        function fetchWeather(city) {
       const currentUrl = `https://api.openweathermap.org/data/2.5/weather?lat=${city.lat}&lon=${city.lon}&units=metric&lang=pl&appid=${apiKey}`;
       const forecastUrl = `https://api.openweathermap.org/data/2.5/forecast?lat=${city.lat}&lon=${city.lon}&units=metric&lang=pl&appid=${apiKey}`;
 
@@ -142,7 +240,7 @@
         const container = document.getElementById(city.elementId);
         const weatherMain = current.weather[0].main.toLowerCase();
         const isNight = current.dt < current.sys.sunrise || current.dt > current.sys.sunset;
-        if (city.elementId === 'you') setBackground(weatherMain, isNight);
+        if (city.elementId === 'you') setWeatherBackground(weatherMain, isNight);
 
         const currentHTML = `
           <h2>${city.name}</h2>
@@ -176,6 +274,9 @@
     }
 
     function loadWeather() {
+      // Usuń stare animacje
+      document.querySelectorAll('.rain-drop, .cloud, .star').forEach(e => e.remove());
+
       staticCities.forEach(city => fetchWeather(city));
 
       if (navigator.geolocation) {

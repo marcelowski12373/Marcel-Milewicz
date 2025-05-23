@@ -113,7 +113,7 @@
 <script src="https://www.gstatic.com/firebasejs/9.22.2/firebase-app-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/9.22.2/firebase-database-compat.js"></script>
 <script>
-  // KONFIGURACJA TWOJEGO PROJEKTU FIREBASE
+  // Konfiguracja Firebase
   const firebaseConfig = {
     apiKey: "AIzaSyDZsgpwMD2VfWXNJJihpa07XobmgwJuSCA",
     authDomain: "glosowanie-f10c2.firebaseapp.com",
@@ -197,24 +197,31 @@
       });
     });
   }
-
+</script>
+<script>
   function loadPoll() {
     db.ref('poll').once('value', snap => {
       const poll = snap.val();
       if (!poll) return;
       const now = Date.now();
+      const container = document.getElementById('vote-options');
+
       if (poll.end < now) {
-        document.getElementById('vote-options').innerHTML = '<p>Głosowanie zakończone.</p>';
+        container.innerHTML = '<p>Głosowanie zakończone.</p>';
         return;
       }
-      document.getElementById('vote-options').innerHTML = poll.options.map((opt, i) => `
-        <label><input type="radio" name="vote" value="${i}"> ${opt}</label><br/>
-      `).join('');
+
+      container.innerHTML = `
+        <h3>${poll.question}</h3>
+        ${poll.options.map((opt, i) => `
+          <label><input type="radio" name="vote" value="${i}"> ${opt}</label><br/>
+        `).join('')}
+      `;
+
       showCountdown();
     });
   }
-</script>
-<script>
+
   function submitVote() {
     const login = document.getElementById('user-login').value.trim();
     const choice = document.querySelector('input[name="vote"]:checked');
@@ -248,13 +255,16 @@
               db.ref(`logins/${login}`).remove();
               feedback.textContent = "Głos został oddany.";
               feedback.className = "success";
+              loadLogins();
+              loadVoteLog();
             });
           }
         });
       }
     });
   }
-
+</script>
+<script>
   function showCountdown() {
     db.ref('poll').once('value', snap => {
       const poll = snap.val();

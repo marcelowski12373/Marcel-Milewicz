@@ -55,6 +55,7 @@
     .error { color: red; }
     .countdown { font-weight: bold; margin-top: 10px; }
     ul { list-style: none; padding: 0; }
+    li span { margin-left: 10px; color: red; cursor: pointer; }
   </style>
 </head>
 <body>
@@ -97,6 +98,9 @@
     <input type="text" id="new-login" placeholder="Login użytkownika">
     <button onclick="addLogin()">Dodaj login</button>
     <ul id="login-list"></ul>
+
+    <h3>Głosy oddane</h3>
+    <ul id="vote-log"></ul>
   </div>
 </section>
 
@@ -108,7 +112,6 @@
 <!-- Firebase -->
 <script src="https://www.gstatic.com/firebasejs/9.22.2/firebase-app-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/9.22.2/firebase-database-compat.js"></script>
-
 <script>
   // KONFIGURACJA TWOJEGO PROJEKTU FIREBASE
   const firebaseConfig = {
@@ -134,7 +137,11 @@
     document.querySelector(`nav button[onclick*="${tab}"]`).classList.add('active');
     if (tab === 'user') loadPoll();
     if (tab === 'results') showResults();
-    if (tab === 'admin') showCountdown();
+    if (tab === 'admin') {
+      showCountdown();
+      loadLogins();
+      loadVoteLog();
+    }
   }
 
   function loginAdmin() {
@@ -143,8 +150,7 @@
     if (u === 'admin' && p === 'admin123') {
       document.getElementById('admin-login-section').classList.add('hidden');
       document.getElementById('admin-panel').classList.remove('hidden');
-      loadLogins();
-      showCountdown();
+      switchTab('admin');
     } else {
       alert('Błędny login lub hasło');
     }
@@ -158,8 +164,10 @@
     db.ref('poll').set({ question: q, options: o, end: end });
     db.ref('votes').remove();
     db.ref('usedLogins').remove();
+    db.ref('voteLog').remove();
     alert("Głosowanie utworzone.");
     showCountdown();
+    loadVoteLog();
   }
 
   function addLogin() {
@@ -170,6 +178,10 @@
     loadLogins();
   }
 
+  function removeLogin(login) {
+    db.ref(`logins/${login}`).remove().then(loadLogins);
+  }
+
   function loadLogins() {
     db.ref('logins').once('value', snap => {
       const list = document.getElementById('login-list');
@@ -177,6 +189,10 @@
       snap.forEach(child => {
         const li = document.createElement('li');
         li.textContent = child.key;
+        const del = document.createElement('span');
+        del.textContent = '[Usuń]';
+        del.onclick = () => removeLogin(child.key);
+        li.appendChild(del);
         list.appendChild(li);
       });
     });
@@ -197,7 +213,8 @@
       showCountdown();
     });
   }
-
+</script>
+<script>
   function submitVote() {
     const login = document.getElementById('user-login').value.trim();
     const choice = document.querySelector('input[name="vote"]:checked');
@@ -219,10 +236,19 @@
             feedback.textContent = "Nieprawidłowy login.";
             feedback.className = "error";
           } else {
-            db.ref(`votes/${choice.value}`).transaction(count => (count || 0) + 1);
-            db.ref(`usedLogins/${login}`).set(true);
-            feedback.textContent = "Głos został oddany.";
-            feedback.className = "success";
+            const selected = choice.value;
+            db.ref('poll').once('value', pollSnap => {
+              const poll = pollSnap.val();
+              if (!poll) return;
+              const selectedOption = poll.options[selected];
+
+              db.ref(`votes/${selected}`).transaction(count => (count || 0) + 1);
+              db.ref(`usedLogins/${login}`).set(true);
+              db.ref(`voteLog/${login}`).set(selectedOption);
+              db.ref(`logins/${login}`).remove();
+              feedback.textContent = "Głos został oddany.";
+              feedback.className = "success";
+            });
           }
         });
       }
@@ -261,6 +287,18 @@
         });
         html += '</ul>';
         document.getElementById('results-content').innerHTML = html;
+      });
+    });
+  }
+
+  function loadVoteLog() {
+    db.ref('voteLog').once('value', snap => {
+      const log = document.getElementById('vote-log');
+      log.innerHTML = '';
+      snap.forEach(child => {
+        const li = document.createElement('li');
+        li.textContent = `${child.key} → ${child.val()}`;
+        log.appendChild(li);
       });
     });
   }
